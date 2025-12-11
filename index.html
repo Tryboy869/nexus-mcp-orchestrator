@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS MCP Orchestrator - AI-Powered MCP Discovery</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #fff;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    header {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    
+    .logo {
+      font-size: 48px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+    }
+    
+    .logo i {
+      font-size: 52px;
+      color: #ffd700;
+    }
+    
+    .tagline {
+      font-size: 24px;
+      opacity: 0.9;
+      margin-bottom: 10px;
+    }
+    
+    .subtitle {
+      font-size: 16px;
+      opacity: 0.8;
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    
+    .cta-section {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 40px;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      background: rgba(255, 255, 255, 0.95);
+      color: #667eea;
+      border: none;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    
+    .btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    
+    .btn-primary {
+      background: #ffd700;
+      color: #333;
+    }
+    
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 25px;
+      margin-top: 60px;
+    }
+    
+    .feature-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 30px;
+      transition: all 0.3s ease;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-5px);
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    .feature-icon {
+      font-size: 40px;
+      margin-bottom: 15px;
+      color: #ffd700;
+    }
+    
+    .feature-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    
+    .feature-description {
+      font-size: 14px;
+      line-height: 1.6;
+      opacity: 0.9;
+    }
+    
+    .stats-section {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 40px;
+      margin-top: 60px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 30px;
+      margin-top: 30px;
+    }
+    
+    .stat-item {
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 48px;
+      font-weight: bold;
+      color: #ffd700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-top: 10px;
+    }
+    
+    footer {
+      text-align: center;
+      padding: 40px 20px;
+      margin-top: 60px;
+      opacity: 0.8;
+    }
+    
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    
+    .footer-links a {
+      color: #fff;
+      text-decoration: none;
+      transition: opacity 0.3s;
+    }
+    
+    .footer-links a:hover {
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <i class="fa-solid fa-sitemap"></i>
+        NEXUS MCP Orchestrator
+      </div>
+      <div class="tagline">AI-Powered MCP Server Discovery & Matching</div>
+      <div class="subtitle">
+        Automatically discover, analyze, and match Model Context Protocol servers with developers who need them. Powered by AI.
+      </div>
+      
+      <div class="cta-section">
+        <a href="/dashboard.html" class="btn btn-primary">
+          <i class="fa-solid fa-chart-line"></i>
+          View Dashboard
+        </a>
+        <a href="/explore.html" class="btn">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          Explore Servers
+        </a>
+      </div>
+    </header>
+    
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-robot"></i>
+        </div>
+        <div class="feature-title">AI-Powered Analysis</div>
+        <div class="feature-description">
+          Groq Llama 3 70B analyzes code quality, security, documentation, and MCP compliance automatically.
+        </div>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-radar"></i>
+        </div>
+        <div class="feature-title">Auto Discovery</div>
+        <div class="feature-description">
+          Scans GitHub every hour to detect new MCP servers. Never miss a new server in the ecosystem.
+        </div>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-link"></i>
+        </div>
+        <div class="feature-title">Smart Matching</div>
+        <div class="feature-description">
+          Connects MCP servers with developers searching for exact features. Relevance score powered by AI.
+        </div>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-bell"></i>
+        </div>
+        <div class="feature-title">Intelligent Notifications</div>
+        <div class="feature-description">
+          Notifies maintainers and users automatically via GitHub issues. Respects cooldown (1/hour max).
+        </div>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <div class="feature-title">Enterprise Security</div>
+        <div class="feature-description">
+          Rate limiting, SQL injection detection, XSS protection, and comprehensive logging built-in.
+        </div>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">
+          <i class="fa-solid fa-gauge-high"></i>
+        </div>
+        <div class="feature-title">Real-Time Metrics</div>
+        <div class="feature-description">
+          Live dashboard with ecosystem stats, quality scores, and adoption metrics updated continuously.
+        </div>
+      </div>
+    </div>
+    
+    <div class="stats-section">
+      <h2 style="text-align: center; font-size: 32px; margin-bottom: 10px;">
+        <i class="fa-solid fa-chart-pie"></i>
+        Ecosystem Stats
+      </h2>
+      <p style="text-align: center; opacity: 0.8;">Live data from the MCP ecosystem</p>
+      
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value" id="totalServers">
+            <i class="fa-solid fa-server"></i>
+            <span>--</span>
+          </div>
+          <div class="stat-label">MCP Servers Discovered</div>
+        </div>
+        
+        <div class="stat-item">
+          <div class="stat-value" id="avgScore">
+            <i class="fa-solid fa-star"></i>
+            <span>--</span>
+          </div>
+          <div class="stat-label">Average Quality Score</div>
+        </div>
+        
+        <div class="stat-item">
+          <div class="stat-value" id="totalMatches">
+            <i class="fa-solid fa-bullseye"></i>
+            <span>--</span>
+          </div>
+          <div class="stat-label">Successful Matches</div>
+        </div>
+      </div>
+    </div>
+    
+    <footer>
+      <p>Built by <strong>Nexus Studio</strong></p>
+      <p>CEO: Daouda Abdoul Anzize</p>
+      
+      <div class="footer-links">
+        <a href="mailto:nexusstudio100@gmail.com">
+          <i class="fa-solid fa-envelope"></i>
+          Contact
+        </a>
+        <a href="/admin.html">
+          <i class="fa-solid fa-lock"></i>
+          Admin
+        </a>
+      </div>
+    </footer>
+  </div>
+  
+  <script>
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+          document.querySelector('#totalServers span').textContent = data.stats.totalServers;
+          document.querySelector('#avgScore span').textContent = data.stats.averageScore;
+          document.querySelector('#totalMatches span').textContent = data.stats.totalMatches;
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+    
+    loadStats();
+    setInterval(loadStats, 30000); // Refresh every 30s
+  </script>
+</body>
+</html>
