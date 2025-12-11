@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - NEXUS MCP Orchestrator</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0f;
+      color: #e8e8f0;
+      min-height: 100vh;
+    }
+    
+    .navbar {
+      background: #1a1a24;
+      padding: 20px;
+      border-bottom: 2px solid #6b8cff;
+    }
+    
+    .nav-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      font-size: 24px;
+      font-weight: bold;
+      color: #6b8cff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .nav-links a {
+      color: #e8e8f0;
+      text-decoration: none;
+      transition: color 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .nav-links a:hover {
+      color: #6b8cff;
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 30px 20px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    
+    .stat-card {
+      background: #1a1a24;
+      padding: 25px;
+      border-radius: 12px;
+      border-left: 4px solid #6b8cff;
+      transition: transform 0.3s;
+    }
+    
+    .stat-card:hover {
+      transform: translateY(-3px);
+    }
+    
+    .stat-value {
+      font-size: 42px;
+      font-weight: bold;
+      color: #6b8cff;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .stat-label {
+      color: #9090a8;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    
+    .servers-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 20px;
+    }
+    
+    .server-card {
+      background: #1a1a24;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #2a2a34;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    
+    .server-card:hover {
+      border-color: #6b8cff;
+      transform: translateY(-3px);
+    }
+    
+    .server-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 15px;
+    }
+    
+    .server-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #e8e8f0;
+    }
+    
+    .server-owner {
+      color: #9090a8;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    
+    .server-score {
+      background: #6b8cff;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .server-meta {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #9090a8;
+    }
+    
+    .server-meta span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .server-category {
+      display: inline-block;
+      background: #2a2a34;
+      color: #70d6a3;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .server-features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    
+    .feature-tag {
+      background: rgba(107, 140, 255, 0.1);
+      color: #6b8cff;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #9090a8;
+    }
+    
+    .loading i {
+      font-size: 48px;
+      animation: spin 2s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-content">
+      <div class="logo">
+        <i class="fa-solid fa-sitemap"></i>
+        NEXUS MCP
+      </div>
+      <div class="nav-links">
+        <a href="/">
+          <i class="fa-solid fa-house"></i>
+          Home
+        </a>
+        <a href="/dashboard.html">
+          <i class="fa-solid fa-chart-line"></i>
+          Dashboard
+        </a>
+        <a href="/explore.html">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          Explore
+        </a>
+        <a href="/admin.html">
+          <i class="fa-solid fa-lock"></i>
+          Admin
+        </a>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container">
+    <h1>
+      <i class="fa-solid fa-chart-line"></i>
+      Ecosystem Dashboard
+    </h1>
+    
+    <div class="stats-grid" id="stats">
+      <div class="loading">
+        <i class="fa-solid fa-spinner"></i>
+        <p>Loading statistics...</p>
+      </div>
+    </div>
+    
+    <div class="section-header">
+      <i class="fa-solid fa-fire"></i>
+      Top Rated MCP Servers
+    </div>
+    
+    <div class="servers-grid" id="servers">
+      <div class="loading">
+        <i class="fa-solid fa-spinner"></i>
+        <p>Loading servers...</p>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+          document.getElementById('stats').innerHTML = `
+            <div class="stat-card">
+              <div class="stat-value">
+                <i class="fa-solid fa-server"></i>
+                ${data.stats.totalServers}
+              </div>
+              <div class="stat-label">Total MCP Servers</div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-value">
+                <i class="fa-solid fa-star"></i>
+                ${data.stats.averageScore}
+              </div>
+              <div class="stat-label">Average Quality Score</div>
+            </div>
+            
+            <div class="stat-card">
+              <div class="stat-value">
+                <i class="fa-solid fa-bullseye"></i>
+                ${data.stats.totalMatches}
+              </div>
+              <div class="stat-label">Total Matches Found</div>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        document.getElementById('stats').innerHTML = '<p style="color: #ff5555;">Error loading stats</p>';
+      }
+    }
+    
+    async function loadServers() {
+      try {
+        const response = await fetch('/api/servers?minScore=7');
+        const data = await response.json();
+        
+        if (data.success && data.servers.length > 0) {
+          document.getElementById('servers').innerHTML = data.servers.map(server => `
+            <div class="server-card" onclick="window.location.href='/server-detail.html?id=${server.id}'">
+              <div class="server-header">
+                <div>
+                  <div class="server-name">${server.repo_name}</div>
+                  <div class="server-owner">
+                    <i class="fa-brands fa-github"></i>
+                    ${server.repo_owner}
+                  </div>
+                </div>
+                <div class="server-score">
+                  <i class="fa-solid fa-star"></i>
+                  ${server.score.toFixed(1)}
+                </div>
+              </div>
+              
+              <div class="server-meta">
+                <span>
+                  <i class="fa-solid fa-star"></i>
+                  ${server.stars}
+                </span>
+                <span>
+                  <i class="fa-solid fa-code-fork"></i>
+                  ${server.forks}
+                </span>
+                <span>
+                  <i class="fa-solid fa-circle" style="color: ${server.maintenance ? '#70d6a3' : '#ff5555'}"></i>
+                  ${server.maintenance ? 'Active' : 'Dormant'}
+                </span>
+              </div>
+              
+              <div class="server-category">
+                <i class="fa-solid fa-tag"></i>
+                ${server.category}
+              </div>
+              
+              <div class="server-features">
+                ${server.features.slice(0, 3).map(f => `
+                  <span class="feature-tag">${f}</span>
+                `).join('')}
+                ${server.features.length > 3 ? `<span class="feature-tag">+${server.features.length - 3} more</span>` : ''}
+              </div>
+            </div>
+          `).join('');
+        } else {
+          document.getElementById('servers').innerHTML = '<p style="color: #9090a8;">No servers found yet. Check back soon!</p>';
+        }
+      } catch (error) {
+        console.error('Error loading servers:', error);
+        document.getElementById('servers').innerHTML = '<p style="color: #ff5555;">Error loading servers</p>';
+      }
+    }
+    
+    loadStats();
+    loadServers();
+    
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+      loadStats();
+      loadServers();
+    }, 30000);
+  </script>
+</body>
+</html>
