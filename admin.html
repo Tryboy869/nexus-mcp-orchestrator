@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - NEXUS MCP</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0f;
+      color: #e8e8f0;
+      padding: 20px;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+      color: #6b8cff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    
+    .auth-section {
+      max-width: 500px;
+      margin: 100px auto;
+      background: #1a1a24;
+      padding: 40px;
+      border-radius: 12px;
+      text-align: center;
+    }
+    
+    .auth-section h2 {
+      margin-bottom: 20px;
+    }
+    
+    .auth-section input {
+      width: 100%;
+      padding: 15px;
+      background: #0a0a0f;
+      border: 1px solid #2a2a34;
+      color: #e8e8f0;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+    
+    .auth-section button {
+      width: 100%;
+      padding: 15px;
+      background: #6b8cff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    
+    .auth-section button:hover {
+      background: #5a7ce8;
+    }
+    
+    .dashboard {
+      display: none;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      background: #1a1a24;
+      padding: 20px;
+      border-radius: 12px;
+      border-left: 4px solid #6b8cff;
+    }
+    
+    .stat-value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #6b8cff;
+    }
+    
+    .stat-label {
+      color: #9090a8;
+      margin-top: 5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .section {
+      background: #1a1a24;
+      border-radius: 12px;
+      padding: 25px;
+      margin-bottom: 25px;
+    }
+    
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 22px;
+    }
+    
+    .btn {
+      background: #6b8cff;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn:hover {
+      background: #5a7ce8;
+    }
+    
+    .btn-danger {
+      background: #ff5555;
+    }
+    
+    .btn-danger:hover {
+      background: #ff3333;
+    }
+    
+    .logs-container {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    
+    .log-entry {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      border-left: 4px solid #6b8cff;
+      font-size: 13px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      background: #0a0a0f;
+    }
+    
+    .log-entry.INFO { border-left-color: #70d6a3; }
+    .log-entry.WARN { border-left-color: #ffb86c; }
+    .log-entry.ERROR { border-left-color: #ff5555; }
+    .log-entry.SECURITY { border-left-color: #ff6b9d; background: rgba(255, 107, 157, 0.1); }
+    
+    .timestamp {
+      color: #9090a8;
+      font-size: 11px;
+    }
+    
+    .actions {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .status-success {
+      background: rgba(112, 214, 163, 0.2);
+      color: #70d6a3;
+    }
+    
+    .status-warning {
+      background: rgba(255, 184, 108, 0.2);
+      color: #ffb86c;
+    }
+    
+    .status-error {
+      background: rgba(255, 85, 85, 0.2);
+      color: #ff5555;
+    }
+  </style>
+</head>
+<body>
+  <div id="authSection" class="auth-section">
+    <h2>
+      <i class="fa-solid fa-lock"></i>
+      Admin Authentication
+    </h2>
+    <p style="color: #9090a8; margin-bottom: 20px;">Enter your admin key to access the dashboard</p>
+    <input type="password" id="adminKeyInput" placeholder="Admin Key">
+    <button onclick="authenticate()">
+      <i class="fa-solid fa-key"></i>
+      Unlock Dashboard
+    </button>
+    <p id="authError" style="color: #ff5555; margin-top: 15px; display: none;"></p>
+  </div>
+  
+  <div id="dashboard" class="dashboard">
+    <h1>
+      <i class="fa-solid fa-shield-halved"></i>
+      Security Dashboard - NEXUS MCP
+    </h1>
+    
+    <div class="stats-grid" id="stats"></div>
+    
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <i class="fa-solid fa-bolt"></i>
+          Quick Actions
+        </h2>
+      </div>
+      <div class="actions">
+        <button class="btn" onclick="triggerScan()">
+          <i class="fa-solid fa-radar"></i>
+          Trigger Manual Scan
+        </button>
+        <button class="btn" onclick="refreshData()">
+          <i class="fa-solid fa-rotate"></i>
+          Refresh Data
+        </button>
+        <button class="btn btn-danger" onclick="logout()">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          Logout
+        </button>
+      </div>
+    </div>
+    
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <i class="fa-solid fa-chart-line"></i>
+          Recent Logs (Auto-refresh 5s)
+        </h2>
+      </div>
+      <div class="logs-container" id="logs"></div>
+    </div>
+  </div>
+  
+  <script>
+    let ADMIN_KEY = '';
+    
+    function authenticate() {
+      const key = document.getElementById('adminKeyInput').value;
+      
+      if (!key) {
+        showAuthError('Please enter an admin key');
+        return;
+      }
+      
+      ADMIN_KEY = key;
+      
+      // Test authentication
+      fetch('/api/admin/stats', {
+        headers: { 'X-Admin-Key': ADMIN_KEY }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          document.getElementById('authSection').style.display = 'none';
+          document.getElementById('dashboard').style.display = 'block';
+          loadStats();
+          loadLogs();
+          startAutoRefresh();
+        } else {
+          showAuthError('Invalid admin key');
+        }
+      })
+      .catch(error => {
+        showAuthError('Authentication failed');
+      });
+    }
+    
+    function showAuthError(message) {
+      const errorEl = document.getElementById('authError');
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+      setTimeout(() => {
+        errorEl.style.display = 'none';
+      }, 3000);
+    }
+    
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/admin/stats', {
+          headers: { 'X-Admin-Key': ADMIN_KEY }
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          logout();
+          return;
+        }
+        
+        const stats = data.stats;
+        
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card">
+            <div class="stat-value">${stats.total}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-list"></i>
+              Total Events (24h)
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #70d6a3">${stats.byLevel.INFO}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-circle-info"></i>
+              INFO
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #ffb86c">${stats.byLevel.WARN}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              WARNINGS
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #ff5555">${stats.byLevel.ERROR}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-circle-xmark"></i>
+              ERRORS
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: #ff6b9d">${stats.byLevel.SECURITY}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-shield-halved"></i>
+              SECURITY
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.blockedIPs.length}</div>
+            <div class="stat-label">
+              <i class="fa-solid fa-ban"></i>
+              Blocked IPs
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+    
+    async function loadLogs() {
+      try {
+        const response = await fetch('/api/admin/logs', {
+          headers: { 'X-Admin-Key': ADMIN_KEY }
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) return;
+        
+        const logsHTML = data.logs.map(log => `
+          <div class="log-entry ${log.level}">
+            <div class="timestamp">${new Date(log.timestamp).toLocaleString()}</div>
+            <div><strong>[${log.level}] [${log.type}]</strong></div>
+            <div>${JSON.stringify(log, null, 2).substring(0, 500)}</div>
+          </div>
+        `).join('');
+        
+        document.getElementById('logs').innerHTML = logsHTML || '<p style="color: #9090a8;">No logs available</p>';
+      } catch (error) {
+        console.error('Error loading logs:', error);
+      }
+    }
+    
+    async function triggerScan() {
+      if (!confirm('This will start a manual scan of GitHub for new MCP servers. Continue?')) {
+        return;
+      }
+      
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'X-Admin-Key': ADMIN_KEY }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert(`Scan completed! Processed ${data.processed} repositories.`);
+          refreshData();
+        } else {
+          alert('Scan failed: ' + data.error);
+        }
+      } catch (error) {
+        alert('Error triggering scan');
+      }
+    }
+    
+    function refreshData() {
+      loadStats();
+      loadLogs();
+    }
+    
+    function startAutoRefresh() {
+      setInterval(() => {
+        loadStats();
+        loadLogs();
+      }, 5000);
+    }
+    
+    function logout() {
+      ADMIN_KEY = '';
+      document.getElementById('authSection').style.display = 'block';
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('adminKeyInput').value = '';
+    }
+    
+    // Handle Enter key in password input
+    document.getElementById('adminKeyInput')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        authenticate();
+      }
+    });
+  </script>
+</body>
+</html>
