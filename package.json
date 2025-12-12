@@ -5,8 +5,8 @@
   "type": "module",
   "main": "api.js",
   "scripts": {
-    "start": "node api.js",
-    "dev": "node api.js"
+    "start": "node startup.js",
+    "dev": "node startup.js"
   },
   "keywords": ["mcp", "ai", "orchestrator"],
   "author": "Daouda Abdoul Anzize - Nexus Studio",
