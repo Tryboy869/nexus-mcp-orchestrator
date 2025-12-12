@@ -1,22 +1,14 @@
 {
   "name": "nexus-mcp-orchestrator",
   "version": "1.0.0",
-  "description": "AI-powered MCP server discovery, analysis and matching system",
+  "description": "AI-powered MCP server discovery and matching",
   "type": "module",
   "main": "api.js",
-  "packageManager": "npm@10.0.0",
   "scripts": {
-    "start": "node scripts/init-db.js && node api.js",
-    "dev": "nodemon api.js",
-    "init-db": "node scripts/init-db.js"
+    "start": "node api.js",
+    "dev": "node api.js"
   },
-  "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "ai",
-    "orchestrator",
-    "nexus"
-  ],
+  "keywords": ["mcp", "ai", "orchestrator"],
   "author": "Daouda Abdoul Anzize - Nexus Studio",
   "license": "MIT",
   "dependencies": {
@@ -27,9 +19,6 @@
     "@sendgrid/mail": "^7.7.0",
     "dotenv": "^16.3.1",
     "node-cron": "^3.0.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
   },
   "engines": {
     "node": ">=18.0.0"
