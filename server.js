@@ -191,11 +191,11 @@ class GitHubScanner {
 
   async scanNewServers(limit = 100) {
     console.log('[SCANNER] Starting GitHub scan...');
-    console.log('[SCANNER] Query: topic:mcp-server OR topic:model-context-protocol');
+    console.log('[SCANNER] Query: topic:mcp-server');
     
     try {
       const result = await this.octokit.search.repos({
-        q: 'topic:mcp-server OR topic:model-context-protocol',
+        q: 'topic:mcp-server',
         sort: 'updated',
         order: 'desc',
         per_page: limit
