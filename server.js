@@ -6,6 +6,94 @@ import sgMail from '@sendgrid/mail';
 import crypto from 'crypto';
 
 // ============================================================================
+// DATABASE SERVICE WITH AUTO-INIT
+// ============================================================================
+
+class DatabaseService {
+  constructor() {
+    this.client = createClient({
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN
+    });
+  }
+
+  async init() {
+    console.log('[DB] Initializing database schema...');
+    
+    try {
+      // Table: mcp_servers
+      await this.client.execute(`
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+          id TEXT PRIMARY KEY,
+          repo_owner TEXT NOT NULL,
+          repo_name TEXT NOT NULL,
+          repo_url TEXT NOT NULL,
+          stars INTEGER DEFAULT 0,
+          forks INTEGER DEFAULT 0,
+          last_updated TEXT,
+          score REAL DEFAULT 0,
+          code_quality REAL DEFAULT 0,
+          security REAL DEFAULT 0,
+          documentation REAL DEFAULT 0,
+          mcp_compliance REAL DEFAULT 0,
+          maintenance INTEGER DEFAULT 0,
+          category TEXT,
+          features TEXT,
+          recommendations TEXT,
+          analyzed_at TEXT,
+          notified_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(repo_owner, repo_name)
+        )
+      `);
+
+      // Table: matches
+      await this.client.execute(`
+        CREATE TABLE IF NOT EXISTS matches (
+          id TEXT PRIMARY KEY,
+          server_id TEXT NOT NULL,
+          user_repo_owner TEXT NOT NULL,
+          user_repo_name TEXT NOT NULL,
+          user_issue_url TEXT,
+          relevance REAL NOT NULL,
+          reason TEXT,
+          features TEXT,
+          status TEXT DEFAULT 'pending',
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          notified_at TEXT
+        )
+      `);
+
+      // Table: notifications
+      await this.client.execute(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL,
+          target_repo_owner TEXT NOT NULL,
+          target_repo_name TEXT NOT NULL,
+          issue_url TEXT,
+          server_id TEXT,
+          sent_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      console.log('[DB] Schema initialized successfully');
+    } catch (error) {
+      console.error('[DB] Init error:', error.message);
+      throw error;
+    }
+  }
+
+  async execute(query) {
+    return await this.client.execute(query);
+  }
+
+  async query(sql, args = []) {
+    return await this.client.execute({ sql, args });
+  }
+}
+
+// ============================================================================
 // MULTI-AGENT GROQ POOL
 // ============================================================================
 
@@ -38,36 +126,37 @@ class AgentPool {
       });
     });
 
-    console.log(`[AGENT POOL] Initialized with ${this.agents.length} agents`);
-    this.startUsageReset();
+    console.log(`[AGENTS] Initialized ${this.agents.length} agent(s)`);
+    
+    // Reset usage every minute
+    setInterval(() => {
+      this.agents.forEach(agent => {
+        agent.usage.requests = 0;
+        agent.status = 'active';
+      });
+    }, 60000);
   }
 
   getNextAgent() {
     const now = Date.now();
     
-    // Reset usage if window passed
-    this.agents.forEach(agent => {
-      if (now >= agent.resetAt) {
-        agent.usage.requests = 0;
-        agent.usage.resetAt = now + 60000;
-        agent.status = 'active';
-      }
-    });
-
-    // Find available agent (round-robin with availability check)
     for (let i = 0; i < this.agents.length; i++) {
       const agent = this.agents[this.currentIndex];
       this.currentIndex = (this.currentIndex + 1) % this.agents.length;
 
-      if (agent.status === 'active' && agent.usage.requests < agent.usage.limit) {
-        return agent;
+      if (agent.usage.requests >= agent.usage.limit) continue;
+      if (agent.usage.resetAt <= now) {
+        agent.usage.requests = 0;
+        agent.usage.resetAt = now + 60000;
       }
+
+      return agent;
     }
 
-    throw new Error('All agents are rate limited. Please wait.');
+    throw new Error('All agents rate limited. Please wait.');
   }
 
-  async execute(prompt, role = 'general') {
+  async execute(prompt) {
     const agent = this.getNextAgent();
 
     try {
@@ -79,49 +168,14 @@ class AgentPool {
       });
 
       agent.usage.requests++;
-
-      console.log(`[${agent.id}] ${role} - ${agent.usage.requests}/${agent.usage.limit} requests`);
-
       return response.choices[0].message.content;
     } catch (error) {
       if (error.message.includes('rate limit')) {
         agent.status = 'rate_limited';
-        console.warn(`[${agent.id}] Rate limited, retrying with another agent...`);
-        return this.execute(prompt, role); // Retry with next agent
+        return this.execute(prompt); // Retry with next agent
       }
       throw error;
     }
-  }
-
-  startUsageReset() {
-    setInterval(() => {
-      this.agents.forEach(agent => {
-        agent.usage.requests = 0;
-        agent.status = 'active';
-      });
-      console.log('[AGENT POOL] Usage reset completed');
-    }, 60000);
-  }
-}
-
-// ============================================================================
-// DATABASE CLIENT
-// ============================================================================
-
-class DatabaseService {
-  constructor() {
-    this.client = createClient({
-      url: process.env.TURSO_DATABASE_URL,
-      authToken: process.env.TURSO_AUTH_TOKEN
-    });
-  }
-
-  async execute(query) {
-    return await this.client.execute(query);
-  }
-
-  async query(sql, args = []) {
-    return await this.client.execute({ sql, args });
   }
 }
 
@@ -130,48 +184,38 @@ class DatabaseService {
 // ============================================================================
 
 class GitHubScanner {
-  constructor(db, agentPool) {
+  constructor(db) {
     this.octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
     this.db = db;
-    this.agentPool = agentPool;
-    this.cache = new Map();
   }
 
   async scanNewServers(limit = 100) {
-    try {
-      const result = await this.octokit.search.repos({
-        q: 'topic:mcp-server OR topic:model-context-protocol created:>2024-11-01',
-        sort: 'updated',
-        order: 'desc',
-        per_page: limit
-      });
+    const result = await this.octokit.search.repos({
+      q: 'topic:mcp-server OR topic:model-context-protocol',
+      sort: 'updated',
+      order: 'desc',
+      per_page: limit
+    });
 
-      console.log(`[GITHUB] Found ${result.data.items.length} MCP repositories`);
+    const newServers = [];
 
-      const newServers = [];
-
-      for (const repo of result.data.items) {
-        const exists = await this.checkIfExists(repo.full_name);
-        
-        if (!exists) {
-          newServers.push({
-            id: crypto.randomUUID(),
-            repo_owner: repo.owner.login,
-            repo_name: repo.name,
-            repo_url: repo.html_url,
-            stars: repo.stargazers_count,
-            forks: repo.forks_count,
-            last_updated: repo.updated_at,
-            created_at: new Date().toISOString()
-          });
-        }
+    for (const repo of result.data.items) {
+      const exists = await this.checkIfExists(repo.full_name);
+      
+      if (!exists) {
+        newServers.push({
+          id: crypto.randomUUID(),
+          repo_owner: repo.owner.login,
+          repo_name: repo.name,
+          repo_url: repo.html_url,
+          stars: repo.stargazers_count,
+          forks: repo.forks_count,
+          last_updated: repo.updated_at
+        });
       }
-
-      return newServers;
-    } catch (error) {
-      console.error('[GITHUB] Scan error:', error.message);
-      throw error;
     }
+
+    return newServers;
   }
 
   async checkIfExists(fullName) {
@@ -186,49 +230,17 @@ class GitHubScanner {
   async getReadme(owner, repo) {
     try {
       const { data } = await this.octokit.repos.getReadme({ owner, repo });
-      const content = Buffer.from(data.content, 'base64').toString('utf-8');
-      return content;
+      return Buffer.from(data.content, 'base64').toString('utf-8');
     } catch (error) {
       return '';
     }
   }
 
-  async getPackageJson(owner, repo) {
-    try {
-      const { data } = await this.octokit.repos.getContent({
-        owner,
-        repo,
-        path: 'package.json'
-      });
-      const content = Buffer.from(data.content, 'base64').toString('utf-8');
-      return JSON.parse(content);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  detectLanguage(readmeContent) {
-    const lowerContent = readmeContent.toLowerCase();
-    
-    const languages = {
-      fr: ['bonjour', 'merci', 'projet', 'développement', 'serveur'],
-      en: ['hello', 'thank', 'project', 'development', 'server'],
-      es: ['hola', 'gracias', 'proyecto', 'desarrollo', 'servidor'],
-      de: ['hallo', 'danke', 'projekt', 'entwicklung', 'server']
-    };
-
-    let maxMatches = 0;
-    let detectedLang = 'en';
-
-    for (const [lang, keywords] of Object.entries(languages)) {
-      const matches = keywords.filter(kw => lowerContent.includes(kw)).length;
-      if (matches > maxMatches) {
-        maxMatches = matches;
-        detectedLang = lang;
-      }
-    }
-
-    return detectedLang;
+  detectLanguage(readme) {
+    const lower = readme.toLowerCase();
+    if (lower.includes('bonjour') || lower.includes('français')) return 'fr';
+    if (lower.includes('hola') || lower.includes('español')) return 'es';
+    return 'en';
   }
 }
 
@@ -241,20 +253,14 @@ class AIAnalyzer {
     this.agentPool = agentPool;
   }
 
-  async analyzeServer(server, readme, packageJson) {
-    const prompt = `You are an expert code quality analyst. Analyze this MCP server and provide a detailed quality assessment.
+  async analyzeServer(server, readme) {
+    const prompt = `Analyze this MCP server and return ONLY valid JSON.
 
 Repository: ${server.repo_owner}/${server.repo_name}
 Stars: ${server.stars}
-Forks: ${server.forks}
+README: ${readme.substring(0, 2000)}
 
-README Content (first 2000 chars):
-${readme.substring(0, 2000)}
-
-Package.json:
-${packageJson ? JSON.stringify(packageJson, null, 2).substring(0, 1000) : 'Not available'}
-
-Provide a JSON response with this structure:
+Return JSON with this exact structure:
 {
   "score": 8.5,
   "code_quality": 9.0,
@@ -263,41 +269,35 @@ Provide a JSON response with this structure:
   "mcp_compliance": 9.0,
   "maintenance": true,
   "category": "data",
-  "features": ["feature1", "feature2", "feature3"],
-  "recommendations": ["recommendation1", "recommendation2"]
+  "features": ["feature1", "feature2"],
+  "recommendations": ["rec1", "rec2"]
 }
 
 Categories: compute, data, api, tools, utility
-Score each criterion from 0-10.
-Be objective and detailed.`;
+Scores: 0-10`;
 
     try {
-      const response = await this.agentPool.execute(prompt, 'analyzer');
-      
-      // Extract JSON from response
+      const response = await this.agentPool.execute(prompt);
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No valid JSON in AI response');
-      }
-
-      const analysis = JSON.parse(jsonMatch[0]);
-      return analysis;
-    } catch (error) {
-      console.error('[AI ANALYZER] Error:', error.message);
       
-      // Return default analysis on error
-      return {
-        score: 5.0,
-        code_quality: 5.0,
-        security: 5.0,
-        documentation: 5.0,
-        mcp_compliance: 5.0,
-        maintenance: false,
-        category: 'utility',
-        features: [],
-        recommendations: ['Unable to analyze - please check repository']
-      };
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (error) {
+      console.error('[ANALYZER] Error:', error.message);
     }
+
+    return {
+      score: 5.0,
+      code_quality: 5.0,
+      security: 5.0,
+      documentation: 5.0,
+      mcp_compliance: 5.0,
+      maintenance: false,
+      category: 'utility',
+      features: [],
+      recommendations: []
+    };
   }
 }
 
@@ -314,13 +314,10 @@ class MCPMatcher {
 
   async findMatches(server, analysis) {
     try {
-      // Search GitHub for repos mentioning needs related to server features
       const features = analysis.features.join(' OR ');
-      const searchQuery = `"looking for" OR "need" ${features} MCP in:issue is:open`;
-
       const result = await this.scanner.octokit.search.issuesAndPullRequests({
-        q: searchQuery,
-        per_page: 20
+        q: `"looking for" OR "need" ${features} MCP in:issue is:open`,
+        per_page: 10
       });
 
       const matches = [];
@@ -334,7 +331,6 @@ class MCPMatcher {
             server_id: server.id,
             user_repo_owner: issue.repository_url.split('/')[4],
             user_repo_name: issue.repository_url.split('/')[5],
-            user_issue_number: issue.number,
             user_issue_url: issue.html_url,
             relevance: relevance.score,
             reason: relevance.reason,
@@ -353,70 +349,50 @@ class MCPMatcher {
   }
 
   async calculateRelevance(server, analysis, issue) {
-    const prompt = `Determine if this MCP server matches the user's need.
+    const prompt = `Does this MCP server match the user's need? Return ONLY JSON.
 
-MCP Server: ${server.repo_owner}/${server.repo_name}
+Server: ${server.repo_name}
 Features: ${analysis.features.join(', ')}
-Category: ${analysis.category}
-
 User Issue: ${issue.title}
-Description: ${issue.body ? issue.body.substring(0, 500) : 'No description'}
 
-Respond with JSON:
+Return JSON:
 {
   "score": 0.85,
-  "reason": "Brief explanation why this matches"
-}
-
-Score from 0.0 (no match) to 1.0 (perfect match).`;
+  "reason": "Brief explanation"
+}`;
 
     try {
-      const response = await this.agentPool.execute(prompt, 'matcher');
+      const response = await this.agentPool.execute(prompt);
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
     } catch (error) {
-      console.error('[MATCHER] Relevance calc error:', error.message);
+      console.error('[MATCHER] Relevance error:', error.message);
     }
 
-    return { score: 0.0, reason: 'Unable to calculate relevance' };
+    return { score: 0.0, reason: 'Unable to calculate' };
   }
 }
 
 // ============================================================================
-// NOTIFICATION MANAGER
+// NOTIFIER
 // ============================================================================
 
 class NotificationManager {
   constructor(db, scanner) {
     this.db = db;
     this.scanner = scanner;
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    if (process.env.SENDGRID_API_KEY) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    }
   }
 
   async notifyMaintainer(server, analysis, matches, language = 'en') {
     try {
-      // Check cooldown
-      const canNotify = await this.checkNotificationCooldown(
-        server.repo_owner,
-        server.repo_name
-      );
+      const canNotify = await this.checkCooldown(server.repo_owner, server.repo_name);
+      if (!canNotify) return { success: false, reason: 'cooldown' };
 
-      if (!canNotify) {
-        console.log(`[NOTIF] Cooldown active for ${server.repo_owner}/${server.repo_name}`);
-        return { success: false, reason: 'cooldown' };
-      }
+      const template = this.getTemplate(server, analysis, matches, language);
 
-      const templates = {
-        en: this.getEnglishTemplate(server, analysis, matches),
-        fr: this.getFrenchTemplate(server, analysis, matches)
-      };
-
-      const template = templates[language] || templates.en;
-
-      // Create GitHub issue
       const issue = await this.scanner.octokit.issues.create({
         owner: server.repo_owner,
         repo: server.repo_name,
@@ -425,215 +401,97 @@ class NotificationManager {
         labels: ['nexus-mcp-orchestrator']
       });
 
-      // Log notification
       await this.db.query(
-        `INSERT INTO notifications (id, type, target_repo_owner, target_repo_name, issue_number, issue_url, server_id, sent_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          crypto.randomUUID(),
-          'maintainer',
-          server.repo_owner,
-          server.repo_name,
-          issue.data.number,
-          issue.data.html_url,
-          server.id,
-          new Date().toISOString()
-        ]
+        `INSERT INTO notifications (id, type, target_repo_owner, target_repo_name, issue_url, server_id, sent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [crypto.randomUUID(), 'maintainer', server.repo_owner, server.repo_name, issue.data.html_url, server.id, new Date().toISOString()]
       );
 
-      console.log(`[NOTIF] Maintainer notified: ${issue.data.html_url}`);
-
-      return { success: true, issueUrl: issue.data.html_url };
+      console.log(`[NOTIFIER] Notified: ${issue.data.html_url}`);
+      return { success: true, url: issue.data.html_url };
     } catch (error) {
-      console.error('[NOTIF] Error notifying maintainer:', error.message);
+      console.error('[NOTIFIER] Error:', error.message);
       return { success: false, reason: error.message };
     }
   }
 
-  async checkNotificationCooldown(owner, repo) {
-    const cooldownMs = parseInt(process.env.NOTIFICATION_COOLDOWN_MS) || 3600000;
-    const cutoff = new Date(Date.now() - cooldownMs).toISOString();
-
+  async checkCooldown(owner, repo) {
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
     const result = await this.db.query(
-      `SELECT id FROM notifications 
-       WHERE target_repo_owner = ? AND target_repo_name = ? AND sent_at > ?`,
-      [owner, repo, cutoff]
+      'SELECT id FROM notifications WHERE target_repo_owner = ? AND target_repo_name = ? AND sent_at > ?',
+      [owner, repo, oneHourAgo]
     );
-
     return result.rows.length === 0;
   }
 
-  getEnglishTemplate(server, analysis, matches) {
+  getTemplate(server, analysis, matches, language) {
+    const email = process.env.NEXUS_STUDIO_EMAIL || 'nexusstudio100@gmail.com';
+    const ceo = process.env.NEXUS_STUDIO_CEO || 'Daouda Abdoul Anzize';
+
+    if (language === 'fr') {
+      return {
+        title: `Votre Serveur MCP Correspond à ${matches.length} Utilisateurs`,
+        body: `## Bonjour de Nexus Studio !
+
+Je suis NEXUS MCP Orchestrator, une IA développée par Nexus Studio.
+
+**CEO**: ${ceo}
+**Contact**: ${email}
+
+---
+
+### Votre Serveur MCP
+
+**Score**: ${analysis.score}/10
+**Catégorie**: ${analysis.category}
+**Matches trouvés**: ${matches.length}
+
+### Features Détectées
+
+${analysis.features.map(f => `- ${f}`).join('\n')}
+
+---
+
+_Nexus Studio - ${ceo} - ${email}_`
+      };
+    }
+
     return {
-      title: `Your MCP Server Matched with ${matches.length} Potential Users`,
+      title: `Your MCP Server Matched with ${matches.length} Users`,
       body: `## Hello from Nexus Studio!
 
-I'm **NEXUS MCP Orchestrator**, an artificial intelligence developed by **Nexus Studio**.
+I'm NEXUS MCP Orchestrator, an AI by Nexus Studio.
 
-**Who are we?**
-- **Nexus Studio** is an organization dedicated to improving the Model Context Protocol (MCP) ecosystem
-- **CEO**: ${process.env.NEXUS_STUDIO_CEO}
-- **Contact**: ${process.env.NEXUS_STUDIO_EMAIL}
+**CEO**: ${ceo}
+**Contact**: ${email}
 
 ---
 
-### Why this message?
+### Your MCP Server
 
-We detected that your project **\`${server.repo_name}\`** is an MCP server. Our automated analysis system evaluated it and we'd like to share the results.
+**Score**: ${analysis.score}/10
+**Category**: ${analysis.category}
+**Matches found**: ${matches.length}
 
-### Quality Analysis
+### Detected Features
 
-**Overall Score**: ${analysis.score}/10
-
-**Details**:
-- Code quality: ${analysis.code_quality}/10
-- Security: ${analysis.security}/10
-- Documentation: ${analysis.documentation}/10
-- MCP Compliance: ${analysis.mcp_compliance}/10
-- Active maintenance: ${analysis.maintenance ? 'Yes' : 'No'}
-
-**Detected category**: ${analysis.category}
-
-**Identified features**:
 ${analysis.features.map(f => `- ${f}`).join('\n')}
 
 ---
 
-### Matches Found!
-
-We identified **${matches.length} developers** looking for exactly the features your server offers:
-
-${matches.slice(0, 5).map(m => `
-**Repo**: ${m.user_repo_owner}/${m.user_repo_name}
-**Issue**: ${m.user_issue_url}
-**Relevance**: ${(m.relevance * 100).toFixed(0)}%
-**Reason**: ${m.reason}
-`).join('\n---\n')}
-
-${matches.length > 5 ? `\n*...and ${matches.length - 5} more matches*` : ''}
-
----
-
-### Recommendations
-
-${analysis.recommendations.map(r => `- ${r}`).join('\n')}
-
----
-
-### FAQ
-
-**Q: Is this spam?**
-A: No! We respect maintainers. You'll receive max 1 notification/hour.
-
-**Q: How did you find us?**
-A: Automatic GitHub scan (topics: \`mcp-server\`, \`model-context-protocol\`)
-
-**Q: Can I opt-out?**
-A: Yes! Add \`nexus-mcp-orchestrator: opt-out\` to your README or close this issue.
-
-**Q: Is it free?**
-A: Yes, completely. Our mission is to help the MCP ecosystem.
-
----
-
-**Thank you for your contribution to the MCP ecosystem!**
-
-_This notification was automatically generated by NEXUS MCP Orchestrator._
-_Nexus Studio - ${process.env.NEXUS_STUDIO_CEO} - ${process.env.NEXUS_STUDIO_EMAIL}_
-`
-    };
-  }
-
-  getFrenchTemplate(server, analysis, matches) {
-    return {
-      title: `Votre Serveur MCP Correspond à ${matches.length} Utilisateurs Potentiels`,
-      body: `## Bonjour de Nexus Studio !
-
-Je suis **NEXUS MCP Orchestrator**, une intelligence artificielle développée par **Nexus Studio**.
-
-**Qui sommes-nous ?**
-- **Nexus Studio** est une organisation dédiée à l'amélioration de l'écosystème Model Context Protocol (MCP)
-- **CEO** : ${process.env.NEXUS_STUDIO_CEO}
-- **Contact** : ${process.env.NEXUS_STUDIO_EMAIL}
-
----
-
-### Pourquoi ce message ?
-
-Nous avons détecté que votre projet **\`${server.repo_name}\`** est un serveur MCP. Notre système d'analyse automatique l'a évalué et nous souhaitons partager les résultats.
-
-### Analyse de Qualité
-
-**Score Global** : ${analysis.score}/10
-
-**Détails** :
-- Qualité du code : ${analysis.code_quality}/10
-- Sécurité : ${analysis.security}/10
-- Documentation : ${analysis.documentation}/10
-- Conformité MCP : ${analysis.mcp_compliance}/10
-- Maintenance active : ${analysis.maintenance ? 'Oui' : 'Non'}
-
-**Catégorie détectée** : ${analysis.category}
-
-**Features identifiées** :
-${analysis.features.map(f => `- ${f}`).join('\n')}
-
----
-
-### Matches Trouvés !
-
-Nous avons identifié **${matches.length} développeurs** qui recherchent exactement les fonctionnalités que votre serveur offre :
-
-${matches.slice(0, 5).map(m => `
-**Repo** : ${m.user_repo_owner}/${m.user_repo_name}
-**Issue** : ${m.user_issue_url}
-**Relevance** : ${(m.relevance * 100).toFixed(0)}%
-**Raison** : ${m.reason}
-`).join('\n---\n')}
-
-${matches.length > 5 ? `\n*...et ${matches.length - 5} autres matches*` : ''}
-
----
-
-### Recommandations
-
-${analysis.recommendations.map(r => `- ${r}`).join('\n')}
-
----
-
-### FAQ
-
-**Q : Est-ce du spam ?**
-R : Non ! Nous respectons les mainteneurs. Vous recevrez maximum 1 notification/heure.
-
-**Q : Comment vous nous avez trouvé ?**
-R : Scan automatique de GitHub (topics: \`mcp-server\`, \`model-context-protocol\`)
-
-**Q : Puis-je opt-out ?**
-R : Oui ! Ajoutez \`nexus-mcp-orchestrator: opt-out\` dans votre README ou fermez cette issue.
-
-**Q : C'est gratuit ?**
-R : Oui, totalement. Notre mission est d'aider l'écosystème MCP.
-
----
-
-**Merci pour votre contribution à l'écosystème MCP !**
-
-_Cette notification a été générée automatiquement par NEXUS MCP Orchestrator._
-_Nexus Studio - ${process.env.NEXUS_STUDIO_CEO} - ${process.env.NEXUS_STUDIO_EMAIL}_
-`
+_Nexus Studio - ${ceo} - ${email}_`
     };
   }
 }
 
 // ============================================================================
-// BACKEND SERVICE (Main Orchestrator)
+// BACKEND SERVICE
 // ============================================================================
 
 export class BackendService {
   constructor() {
-    this.agentPool = null;
     this.db = null;
+    this.agentPool = null;
     this.scanner = null;
     this.analyzer = null;
     this.matcher = null;
@@ -641,148 +499,82 @@ export class BackendService {
   }
 
   async init() {
-    console.log('[BACKEND] Initializing services...');
+    console.log('[BACKEND] Initializing...');
+    
+    this.db = new DatabaseService();
+    await this.db.init();
     
     this.agentPool = new AgentPool();
-    this.db = new DatabaseService();
-    this.scanner = new GitHubScanner(this.db, this.agentPool);
+    this.scanner = new GitHubScanner(this.db);
     this.analyzer = new AIAnalyzer(this.agentPool);
     this.matcher = new MCPMatcher(this.db, this.agentPool, this.scanner);
     this.notifier = new NotificationManager(this.db, this.scanner);
 
-    console.log('[BACKEND] All services initialized');
-  }
-
-  async healthCheck() {
-    return {
-      success: true,
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      agents: this.agentPool.agents.length
-    };
+    console.log('[BACKEND] Ready');
   }
 
   async scanAndAnalyze() {
-    console.log('[ORCHESTRATOR] Starting scan and analysis...');
+    console.log('[SCAN] Starting...');
 
     try {
-      // 1. Scan GitHub for new MCP servers
-      const newServers = await this.scanner.scanNewServers(
-        parseInt(process.env.SCAN_BATCH_SIZE) || 100
-      );
+      const newServers = await this.scanner.scanNewServers(100);
+      console.log(`[SCAN] Found ${newServers.length} new servers`);
 
-      console.log(`[ORCHESTRATOR] Found ${newServers.length} new servers`);
-
-      // 2. Analyze each server
       for (const server of newServers) {
-        try {
-          // Get README
-          const readme = await this.scanner.getReadme(
-            server.repo_owner,
-            server.repo_name
-          );
+        const readme = await this.scanner.getReadme(server.repo_owner, server.repo_name);
+        const analysis = await this.analyzer.analyzeServer(server, readme);
 
-          // Get package.json
-          const packageJson = await this.scanner.getPackageJson(
-            server.repo_owner,
-            server.repo_name
-          );
+        await this.db.query(
+          `INSERT INTO mcp_servers 
+           (id, repo_owner, repo_name, repo_url, stars, forks, last_updated,
+            score, code_quality, security, documentation, mcp_compliance, 
+            maintenance, category, features, recommendations, analyzed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            server.id, server.repo_owner, server.repo_name, server.repo_url,
+            server.stars, server.forks, server.last_updated,
+            analysis.score, analysis.code_quality, analysis.security,
+            analysis.documentation, analysis.mcp_compliance,
+            analysis.maintenance ? 1 : 0, analysis.category,
+            JSON.stringify(analysis.features), JSON.stringify(analysis.recommendations),
+            new Date().toISOString()
+          ]
+        );
 
-          // Analyze with AI
-          const analysis = await this.analyzer.analyzeServer(server, readme, packageJson);
+        const matches = await this.matcher.findMatches(server, analysis);
 
-          // Save to database
+        for (const match of matches) {
           await this.db.query(
-            `INSERT INTO mcp_servers 
-             (id, repo_owner, repo_name, repo_url, stars, forks, last_updated,
-              score, code_quality, security, documentation, mcp_compliance, 
-              maintenance, category, features, recommendations, analyzed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              server.id,
-              server.repo_owner,
-              server.repo_name,
-              server.repo_url,
-              server.stars,
-              server.forks,
-              server.last_updated,
-              analysis.score,
-              analysis.code_quality,
-              analysis.security,
-              analysis.documentation,
-              analysis.mcp_compliance,
-              analysis.maintenance ? 1 : 0,
-              analysis.category,
-              JSON.stringify(analysis.features),
-              JSON.stringify(analysis.recommendations),
-              new Date().toISOString()
-            ]
+            `INSERT INTO matches (id, server_id, user_repo_owner, user_repo_name, user_issue_url, relevance, reason, features, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [match.id, match.server_id, match.user_repo_owner, match.user_repo_name, match.user_issue_url, match.relevance, match.reason, match.features, match.status, match.created_at]
           );
+        }
 
-          // 3. Find matches
-          const matches = await this.matcher.findMatches(server, analysis);
-
-          // Save matches
-          for (const match of matches) {
-            await this.db.query(
-              `INSERT INTO matches 
-               (id, server_id, user_repo_owner, user_repo_name, user_issue_url, 
-                relevance, reason, features, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                match.id,
-                match.server_id,
-                match.user_repo_owner,
-                match.user_repo_name,
-                match.user_issue_url,
-                match.relevance,
-                match.reason,
-                match.features,
-                match.status,
-                match.created_at
-              ]
-            );
-          }
-
-          // 4. Notify maintainer if matches found and score >= 7
-          if (matches.length > 0 && analysis.score >= 7.0) {
-            const language = this.scanner.detectLanguage(readme);
-            await this.notifier.notifyMaintainer(server, analysis, matches, language);
-          }
-
-          console.log(`[ORCHESTRATOR] Processed: ${server.repo_owner}/${server.repo_name}`);
-
-        } catch (error) {
-          console.error(`[ORCHESTRATOR] Error processing ${server.repo_owner}/${server.repo_name}:`, error.message);
+        if (matches.length > 0 && analysis.score >= 7.0) {
+          const lang = this.scanner.detectLanguage(readme);
+          await this.notifier.notifyMaintainer(server, analysis, matches, lang);
         }
       }
 
-      return {
-        success: true,
-        processed: newServers.length
-      };
-
+      return { success: true, processed: newServers.length };
     } catch (error) {
-      console.error('[ORCHESTRATOR] Scan error:', error.message);
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('[SCAN] Error:', error.message);
+      return { success: false, error: error.message };
     }
   }
 
   async getStats() {
-    const totalServers = await this.db.query('SELECT COUNT(*) as count FROM mcp_servers');
+    const total = await this.db.query('SELECT COUNT(*) as count FROM mcp_servers');
     const avgScore = await this.db.query('SELECT AVG(score) as avg FROM mcp_servers');
     const totalMatches = await this.db.query('SELECT COUNT(*) as count FROM matches');
 
     return {
       success: true,
       stats: {
-        totalServers: totalServers.rows[0].count,
+        totalServers: total.rows[0].count,
         averageScore: parseFloat(avgScore.rows[0].avg || 0).toFixed(2),
-        totalMatches: totalMatches.rows[0].count,
-        timestamp: new Date().toISOString()
+        totalMatches: totalMatches.rows[0].count
       }
     };
   }
@@ -819,16 +611,11 @@ export class BackendService {
     const result = await this.db.query('SELECT * FROM mcp_servers WHERE id = ?', [id]);
 
     if (result.rows.length === 0) {
-      return { success: false, message: 'Server not found' };
+      return { success: false, message: 'Not found' };
     }
 
     const server = result.rows[0];
-    
-    // Get matches
-    const matchesResult = await this.db.query(
-      'SELECT * FROM matches WHERE server_id = ? ORDER BY relevance DESC',
-      [id]
-    );
+    const matchesResult = await this.db.query('SELECT * FROM matches WHERE server_id = ?', [id]);
 
     return {
       success: true,
