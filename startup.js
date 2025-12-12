@@ -74,7 +74,7 @@ try {
 // 3. SCAN INITIAL IMMÉDIAT
 // ============================================================================
 
-console.log('🔍 Lancement du scan initial...\n');
+console.log('🔍 Lancement du scan initial (cherche repos avec topic:mcp-server)...\n');
 
 try {
   const result = await backend.scanAndAnalyze();
