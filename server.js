@@ -120,7 +120,7 @@ class AgentPool {
       this.agents.push({
         id: `agent-${index + 1}`,
         client: new Groq({ apiKey: key }),
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama-3.3-70b-versatile',
         usage: { requests: 0, limit: 30, resetAt: Date.now() + 60000 },
         status: 'active'
       });
