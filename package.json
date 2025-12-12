@@ -4,8 +4,9 @@
   "description": "AI-powered MCP server discovery, analysis and matching system",
   "type": "module",
   "main": "api.js",
+  "packageManager": "npm@10.0.0",
   "scripts": {
-    "start": "node api.js",
+    "start": "node scripts/init-db.js && node api.js",
     "dev": "nodemon api.js",
     "init-db": "node scripts/init-db.js"
   },
