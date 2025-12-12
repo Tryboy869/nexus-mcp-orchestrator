@@ -190,32 +190,49 @@ class GitHubScanner {
   }
 
   async scanNewServers(limit = 100) {
-    const result = await this.octokit.search.repos({
-      q: 'topic:mcp-server OR topic:model-context-protocol',
-      sort: 'updated',
-      order: 'desc',
-      per_page: limit
-    });
+    console.log('[SCANNER] Starting GitHub scan...');
+    console.log('[SCANNER] Query: topic:mcp-server OR topic:model-context-protocol');
+    
+    try {
+      const result = await this.octokit.search.repos({
+        q: 'topic:mcp-server OR topic:model-context-protocol',
+        sort: 'updated',
+        order: 'desc',
+        per_page: limit
+      });
 
-    const newServers = [];
+      console.log(`[SCANNER] GitHub returned ${result.data.items.length} repos`);
 
-    for (const repo of result.data.items) {
-      const exists = await this.checkIfExists(repo.full_name);
-      
-      if (!exists) {
-        newServers.push({
-          id: crypto.randomUUID(),
-          repo_owner: repo.owner.login,
-          repo_name: repo.name,
-          repo_url: repo.html_url,
-          stars: repo.stargazers_count,
-          forks: repo.forks_count,
-          last_updated: repo.updated_at
-        });
+      const newServers = [];
+
+      for (const repo of result.data.items) {
+        const exists = await this.checkIfExists(repo.full_name);
+        
+        if (!exists) {
+          console.log(`[SCANNER] New server found: ${repo.full_name}`);
+          newServers.push({
+            id: crypto.randomUUID(),
+            repo_owner: repo.owner.login,
+            repo_name: repo.name,
+            repo_url: repo.html_url,
+            stars: repo.stargazers_count,
+            forks: repo.forks_count,
+            last_updated: repo.updated_at
+          });
+        } else {
+          console.log(`[SCANNER] Skipping existing: ${repo.full_name}`);
+        }
       }
-    }
 
-    return newServers;
+      console.log(`[SCANNER] Total new servers: ${newServers.length}`);
+      return newServers;
+    } catch (error) {
+      console.error('[SCANNER] GitHub API Error:', error.message);
+      if (error.status === 401) {
+        console.error('[SCANNER] ❌ GITHUB_TOKEN is INVALID or EXPIRED!');
+      }
+      throw error;
+    }
   }
 
   async checkIfExists(fullName) {
