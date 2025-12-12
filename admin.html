@@ -207,12 +207,13 @@
       Admin Authentication
     </h2>
     <p style="color: #9090a8; margin-bottom: 20px;">Enter your admin key to access the dashboard</p>
-    <input type="password" id="adminKeyInput" placeholder="Admin Key">
+    <input type="text" id="adminKeyInput" placeholder="Admin Key" value="nexus-studio">
     <button onclick="authenticate()">
       <i class="fa-solid fa-key"></i>
       Unlock Dashboard
     </button>
     <p id="authError" style="color: #ff5555; margin-top: 15px; display: none;"></p>
+    <p style="color: #9090a8; font-size: 12px; margin-top: 10px;">Hint: Try "nexus-studio" or check your Render Environment variables</p>
   </div>
   
   <div id="dashboard" class="dashboard">
